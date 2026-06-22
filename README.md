@@ -49,11 +49,14 @@ pip install -r requirements.txt
 # 3. Run it
 python agent.py "I run a pub, about 200 m2, open 12pm to 11pm"
 python agent.py "Fish & chip shop, 120 m2, open 11-9, battered fish, chips, soft drinks fridge"
+python agent.py --image menu.jpg "120 m2, open 11am-9pm"   # reads a MENU PHOTO (vision)
 python agent.py            # built-in example
 ```
 
-The agent maps the business to a preset type, **or** classifies its menu →
-equipment → bespoke shape, then calls the deterministic engine and writes the brief.
+The agent maps the business to a preset type, **or** classifies its menu (typed
+or **from a photo**) → equipment → bespoke shape, then calls the deterministic
+engine and writes the brief. With `--image`, Claude reads the menu photo via
+vision (on your Claude login), echoes the items it detected, and estimates from them.
 
 ---
 

@@ -15,7 +15,9 @@ Usage:
 """
 
 import sys
+import os
 import json
+import base64
 import anyio
 from claude_agent_sdk import (
     query, tool, create_sdk_mcp_server, ClaudeAgentOptions,
@@ -97,6 +99,9 @@ HARD RULES:
   * If it matches a known type, use analyse_type (pass floor_m2 / open / close if given).
   * If they describe a MENU (food/drink items) and no preset fits well, classify
     the items into the valid menu_categories and use analyse_menu.
+  * If a MENU IMAGE is attached, read it, LIST the items you see, classify them
+    into the valid menu_categories, then use analyse_menu. Echo the items you
+    read in the brief so the owner can sanity-check what was detected.
 - Cite the tools' exact figures. State the confidence (validated vs prior) and,
   if the verdict is "too close to call", say so — don't force a winner.
 
@@ -112,6 +117,39 @@ Then write a SHORT operations brief:
 Be concise and practical, like a brief for a busy ops team."""
 
 
+_MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+          ".webp": "image/webp", ".gif": "image/gif"}
+
+def _parse_args(argv):
+    """Pull an optional --image/-i PATH; the rest is the free-text facts."""
+    image, rest, i = None, [], 0
+    while i < len(argv):
+        if argv[i] in ("--image", "-i") and i + 1 < len(argv):
+            image = argv[i + 1]; i += 2
+        else:
+            rest.append(argv[i]); i += 1
+    return image, " ".join(rest)
+
+
+def _build_prompt(facts, image):
+    """No image -> plain string prompt (unchanged). With image -> streaming-input
+    mode: one user message with a text block + a base64 image block."""
+    if not image:
+        return facts, facts
+    data = base64.standard_b64encode(open(image, "rb").read()).decode()
+    media = _MEDIA.get(os.path.splitext(image)[1].lower(), "image/jpeg")
+    text = (facts + "\n\nA photo of the business's MENU is attached. Read it, list "
+            "the food/drink items you can see, classify them into the valid "
+            "menu_categories, then estimate.")
+
+    async def stream():
+        yield {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": text},
+            {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}},
+        ]}}
+    return stream(), f"{facts}  [+ menu image: {image}]"
+
+
 async def main():
     server = create_sdk_mcp_server(name="rye_tools", version="2.0.0",
                                    tools=[t_list, t_type, t_menu])
@@ -123,12 +161,13 @@ async def main():
                        "mcp__rye_tools__analyse_menu"],
         permission_mode="bypassPermissions",
     )
-    prompt = " ".join(sys.argv[1:]) or (
-        "I run a quick-service restaurant, about 150 m2, in central Manchester, "
-        "open 11am to 11pm, seven days a week. No meter data yet.")
+    image, facts = _parse_args(sys.argv[1:])
+    facts = facts or ("I run a quick-service restaurant, about 150 m2, in central "
+                      "Manchester, open 11am to 11pm, seven days a week. No meter data yet.")
+    prompt, shown = _build_prompt(facts, image)
 
     print("=" * 72 + "\nRYE METERLESS PROCUREMENT AGENT\n" + "=" * 72)
-    print(f"Client: {prompt}\n")
+    print(f"Client: {shown}\n")
 
     brief = []
     async for message in query(prompt=prompt, options=options):
