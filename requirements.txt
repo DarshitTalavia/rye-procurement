@@ -1,0 +1,4 @@
+claude-agent-sdk>=0.2
+anthropic>=0.40
+numpy>=1.25
+pandas>=2.0
