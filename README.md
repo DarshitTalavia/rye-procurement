@@ -29,10 +29,11 @@ hospitality/retail site without ever metering it.
 
 ## Two ways to use it
 
-### A) The calculator (no login, instant)
-Open **`site/index.html`** in any browser (double-click), or deploy the `site/`
-folder to Vercel/Netlify. Pick a business type, set hours + size → live estimate,
-load-shape chart, and tariff recommendation. Fully self-contained.
+### A) The site (no login, instant)
+Open **`site/index.html`** — a short overview of how it works (with live-injected
+validation numbers), linking to the **estimator** (`site/tool.html`): pick a
+business type, set hours + size → live estimate, load-shape chart, and tariff
+recommendation. Deploy the whole `site/` folder to Vercel/Netlify; self-contained.
 
 ### B) The AI agent (runs on *your* Claude login)
 Turns a plain-English description (or a menu) into the brief. Uses the **Claude

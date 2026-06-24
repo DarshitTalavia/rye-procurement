@@ -1,36 +1,4 @@
-"""
-build_site.py  —  generate the interactive site from the UNIFIED engine.
-
-All shape/sector logic now comes from synth.py (one source of truth). This file
-just (1) pulls synth.SECTORS + pricing constants into an embedded JS blob,
-(2) ships a JS MIRROR of synth's placement maths so the browser can recompute
-live as hours change, and (3) self-verifies that mirror against synth in Python.
-"""
-
-import json
-import numpy as np
-import shapes, synth, pricing
-
-
-DATA = {
-    "sectors": {k: {kk: s[kk] for kk in
-                    ("family", "label", "intensity", "confidence", "floor",
-                     "open", "close", "weekend_ratio", "footfall", "mix")}
-                for k, s in synth.SECTORS.items()},
-    "pricing": {
-        "fixed_p": pricing.PRODUCTS["fixed"]["unit_p"],
-        "dn_day_p": pricing.PRODUCTS["day_night"]["day_p"],
-        "dn_night_p": pricing.PRODUCTS["day_night"]["night_p"],
-        "standing_p_day": pricing.STANDING_P_DAY,
-        "ccl_p": pricing.CCL_P_KWH, "vat": pricing.VAT, "duos": pricing.DUOS,
-        "tou_curve": [round(float(x), 3) for x in pricing.TOU_CURVE_HH],
-        "products": [["fixed", "Fixed flat rate"], ["day_night", "Day / Night (E7)"],
-                     ["tou", "Time-of-Use / Agile"]],
-    },
-}
-
-
-HTML = r"""<!doctype html>
+<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RYE — Meterless Procurement Estimator</title>
@@ -94,12 +62,12 @@ HTML = r"""<!doctype html>
     <div id="reco" class="reco"></div>
   </div>
 
-  __VALIDATION__
+  <details class="panel"><summary>Validation — why QSR &amp; Bakery are &ldquo;validated vs meter&rdquo;</summary><p style="font-size:13px">Built from public priors, then backtested against the real May half-hourly meter:</p><ul style="font-size:13px"><li><b>Quick-Service Restaurant</b> — shape corr 0.79; load factor 0.47 vs real 0.48; peak 12:30 vs 12:00; peak-share error 0.1pp; vs generic Elexon-PC3 baseline only corr 0.62.</li><li><b>Bakery</b> — shape corr 0.82; load factor 0.32 vs real 0.44; peak 05:30 vs 05:00; peak-share error 1.8pp; vs generic Elexon-PC3 baseline only corr 0.09.</li></ul><p style="font-size:13px">Blind held-out test (no CSV access while building): size within ~5%, right tariff 2/2. The low/negative PC3 correlation shows the equipment method captures sector shape the industry-standard profile misses (a bakery is anti-correlated with PC3).</p><p class="cap">Scope: 2 sectors, 1 month (May), built blind — not industry-wide.</p></details>
 
   <p class="foot" id="prov"></p>
 </div>
 <script>
-const DATA = __DATA__;
+const DATA = {"sectors": {"qsr": {"family": "Hospitality", "label": "Quick-Service Restaurant", "intensity": 375, "confidence": "validated", "floor": 150, "open": 11, "close": 23, "weekend_ratio": 1.0, "footfall": [[12.5, 3, 1.0], [19, 4, 0.6]], "mix": {"refrigeration": 0.25, "cooking": 0.3, "hvac": 0.3, "lighting": 0.15}}, "restaurant": {"family": "Hospitality", "label": "Restaurant (full service)", "intensity": 400, "confidence": "prior", "floor": 250, "open": 12, "close": 23, "weekend_ratio": 1.1, "footfall": [[13, 3, 0.5], [19.5, 4, 1.0]], "mix": {"refrigeration": 0.2, "cooking": 0.35, "hvac": 0.3, "lighting": 0.15}}, "cafe": {"family": "Hospitality", "label": "Cafe", "intensity": 250, "confidence": "prior", "floor": 90, "open": 7, "close": 17, "weekend_ratio": 1.0, "footfall": [[8.5, 3, 1.0], [12.5, 3, 0.7]], "mix": {"refrigeration": 0.25, "cooking": 0.15, "hvac": 0.3, "lighting": 0.3}}, "bakery": {"family": "Hospitality", "label": "Bakery", "intensity": 400, "confidence": "validated", "floor": 120, "open": 7, "close": 17, "weekend_ratio": 1.2, "footfall": [[8, 3, 1.0]], "mix": {"baking": 0.45, "refrigeration": 0.25, "hvac": 0.15, "lighting": 0.15}}, "pub": {"family": "Hospitality", "label": "Pub / bar", "intensity": 250, "confidence": "prior", "floor": 200, "open": 12, "close": 23, "weekend_ratio": 1.3, "footfall": [[13, 3, 0.3], [20, 4, 1.0]], "mix": {"refrigeration": 0.4, "cooking": 0.15, "hvac": 0.25, "lighting": 0.2}}, "convenience": {"family": "Retail", "label": "Convenience / food shop", "intensity": 300, "confidence": "prior", "floor": 120, "open": 7, "close": 23, "weekend_ratio": 0.95, "footfall": [[13, 4, 0.7], [17.5, 3, 1.0]], "mix": {"refrigeration": 0.5, "hvac": 0.2, "lighting": 0.3}}, "general_retail": {"family": "Retail", "label": "General retail (non-food)", "intensity": 165, "confidence": "prior", "floor": 200, "open": 9, "close": 18, "weekend_ratio": 0.9, "footfall": [[14, 5, 1.0]], "mix": {"refrigeration": 0.15, "hvac": 0.4, "lighting": 0.45}}}, "pricing": {"fixed_p": 24.5, "dn_day_p": 27.0, "dn_night_p": 15.0, "standing_p_day": 95.0, "ccl_p": 0.801, "vat": 0.2, "duos": {"red": 8.0, "amber": 0.8, "green": 0.2}, "tou_curve": [15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 16.0, 16.0, 18.0, 18.0, 22.0, 22.0, 24.0, 24.0, 23.0, 23.0, 21.0, 21.0, 20.0, 20.0, 19.0, 19.0, 20.0, 20.0, 22.0, 22.0, 26.0, 26.0, 34.0, 34.0, 38.0, 38.0, 36.0, 36.0, 28.0, 28.0, 24.0, 24.0, 20.0, 20.0, 18.0, 18.0, 16.0, 16.0], "products": [["fixed", "Fixed flat rate"], ["day_night", "Day / Night (E7)"], ["tou", "Time-of-Use / Agile"]]}};
 const P = DATA.pricing, $ = id => document.getElementById(id);
 
 // ---- placement mirror of synth.py ----
@@ -192,58 +160,4 @@ function setDefaults(){const s=DATA.sectors[sel.value];$('open').value=s.open;$(
 sel.onchange=()=>{setDefaults();render();};
 ['open','close','floor'].forEach(id=>$(id).oninput=render);
 setDefaults();render();
-</script></body></html>"""
-
-
-def _validation_html():
-    """Real backtest numbers (composed vs metered) rendered into a collapsible
-    note, so the 'validated' badge is shown to be earned, not asserted."""
-    ds = json.load(open("data/dataset.json"))
-    pc3 = synth.make_shape(0.15, [[26, 10, 1.0]])      # generic Elexon-PC3-like baseline
-    items = []
-    for s in ("qsr", "bakery"):
-        comp = synth.ARCHETYPES[s]["shape_weekday"]
-        real = np.array(ds["metered_shapes"][s]["weekday"])
-        corr = float(np.corrcoef(comp, real)[0, 1])
-        ncorr = float(np.corrcoef(comp, pc3)[0, 1])
-        lfc = float(np.mean(comp) / np.max(comp)); lfr = float(np.mean(real) / np.max(real))
-        pse = abs(float(comp.max() - real.max())) * 100
-        items.append(
-            f"<li><b>{synth.SECTORS[s]['label']}</b> — shape corr {corr:.2f}; "
-            f"load factor {lfc:.2f} vs real {lfr:.2f}; peak "
-            f"{shapes.hh_label(int(comp.argmax()))} vs {shapes.hh_label(int(real.argmax()))}; "
-            f"peak-share error {pse:.1f}pp; vs generic Elexon-PC3 baseline only "
-            f"corr {ncorr:.2f}.</li>")
-    return ('<details class="panel"><summary>Validation — why QSR &amp; Bakery are '
-            '&ldquo;validated vs meter&rdquo;</summary>'
-            '<p style="font-size:13px">Built from public priors, then backtested against the '
-            'real May half-hourly meter:</p><ul style="font-size:13px">' + "".join(items) + "</ul>"
-            '<p style="font-size:13px">Blind held-out test (no CSV access while building): size '
-            'within ~5%, right tariff 2/2. The low/negative PC3 correlation shows the equipment '
-            'method captures sector shape the industry-standard profile misses (a bakery is '
-            'anti-correlated with PC3).</p>'
-            '<p class="cap">Scope: 2 sectors, 1 month (May), built blind — not industry-wide.</p></details>')
-
-
-def main():
-    import os
-    os.makedirs("site", exist_ok=True)
-    html = HTML.replace("__DATA__", json.dumps(DATA)).replace("__VALIDATION__", _validation_html())
-    with open("site/tool.html", "w") as f:
-        f.write(html)
-    print("=" * 64)
-    print(f"  TOOL BUILT -> site/tool.html  ({len(html)//1024} KB)  from unified engine")
-    print("=" * 64)
-    ds = json.load(open("data/dataset.json"))
-    print("  Composed (engine) vs metered shape, at default hours:")
-    for key in ["qsr", "bakery"]:
-        comp = synth.ARCHETYPES[key]["shape_weekday"]
-        real = np.array(ds["metered_shapes"][key]["weekday"])
-        corr = float(np.corrcoef(comp, real)[0, 1])
-        print(f"    {key:<7} corr {corr:.2f}  peak {shapes.hh_label(int(comp.argmax()))}"
-              f" (real {shapes.hh_label(int(real.argmax()))})")
-    print("  sectors:", list(synth.SECTORS))
-
-
-if __name__ == "__main__":
-    main()
+</script></body></html>

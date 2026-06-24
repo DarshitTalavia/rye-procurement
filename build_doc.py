@@ -1,4 +1,48 @@
-<!doctype html>
+"""
+build_doc.py  —  generate the overview page (site/index.html).
+
+The prose is fixed (plain, first-principles). The NUMBERS are injected live from
+the engine so the write-up can never drift from the tool. Run after build_site.py.
+"""
+
+import json
+import numpy as np
+import synth, pricing, governance, shapes
+
+DS = json.load(open("data/dataset.json"))
+PC3 = synth.make_shape(0.15, [[26, 10, 1.0]])   # generic Elexon-PC3-like baseline
+
+
+def corr(a, b):
+    return float(np.corrcoef(a, b)[0, 1])
+
+def blind_size_error(sector, csv, intensity, floor):
+    """Blind size = public benchmark (intensity x floor); compared to the real
+    May meter total. Shape-independent at the monthly level."""
+    annual = intensity * floor
+    shape = synth.ARCHETYPES[sector]["shape_weekday"]
+    curve = synth._build_curve(shape, annual, synth.SECTORS[sector]["weekend_ratio"])
+    blind_may = curve[curve["ts"].dt.month == 5]["kwh"].sum()
+    real = governance.real_curve(csv)
+    real_may = real[real["ts"].dt.month == 5]["kwh"].sum()
+    return 100 * (blind_may - real_may) / real_may
+
+
+def numbers():
+    q, b = synth.ARCHETYPES["qsr"]["shape_weekday"], synth.ARCHETYPES["bakery"]["shape_weekday"]
+    qr = np.array(DS["metered_shapes"]["qsr"]["weekday"])
+    br = np.array(DS["metered_shapes"]["bakery"]["weekday"])
+    return {
+        "QSR_SIZE": f"{abs(blind_size_error('qsr', 'data/qsr_may.csv', 375, 150)):.1f}",
+        "BAKERY_SIZE": f"{abs(blind_size_error('bakery', 'data/bakery_may.csv', 400, 120)):.1f}",
+        "QSR_CORR": f"{corr(q, qr):.2f}",
+        "BAKERY_CORR": f"{corr(b, br):.2f}",
+        "BAKERY_PC3": f"{corr(PC3, br):+.2f}",
+        "N_SECTORS": str(len(synth.SECTORS)),
+    }
+
+
+HTML = r"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RYE — Meterless Procurement: how it works</title>
@@ -50,16 +94,35 @@
 
 <h2>How we know it works</h2>
 <p>We built the QSR and bakery estimates from public data alone, without looking at their meters. Then we compared.</p>
-<p>Size came within <b>4.1%</b> and <b>5.8%</b>. The shapes matched the real curves (<b>0.79</b> and <b>0.82</b> correlation). And the tool picked the same tariff the real meter would have, both times.</p>
-<p>We also checked against the Elexon profile, the shape the industry uses when there is no meter. Against the real bakery it scores only <b>+0.16</b>; our shape scores <b>0.82</b>. The generic profile barely tracks a bakery, because it assumes business hours, not a pre-dawn bake. That is the case for building the shape from equipment instead of a generic curve.</p>
+<p>Size came within <b>%QSR_SIZE%%</b> and <b>%BAKERY_SIZE%%</b>. The shapes matched the real curves (<b>%QSR_CORR%</b> and <b>%BAKERY_CORR%</b> correlation). And the tool picked the same tariff the real meter would have, both times.</p>
+<p>We also checked against the Elexon profile, the shape the industry uses when there is no meter. Against the real bakery it scores only <b>%BAKERY_PC3%</b>; our shape scores <b>%BAKERY_CORR%</b>. The generic profile barely tracks a bakery, because it assumes business hours, not a pre-dawn bake. That is the case for building the shape from equipment instead of a generic curve.</p>
 
 <h2>What we built</h2>
 <p>Two things.</p>
-<p>A <b>live tool</b>. Pick a business, set the hours and size, and it shows the consumption, the shape, and the tariff. Change the hours and the answer moves. It covers 7 business types across hospitality and retail.</p>
+<p>A <b>live tool</b>. Pick a business, set the hours and size, and it shows the consumption, the shape, and the tariff. Change the hours and the answer moves. It covers %N_SECTORS% business types across hospitality and retail.</p>
 <p>An <b>agent</b>. Describe the business in plain words, or upload a photo of the menu, and it returns the same brief. It reads the menu, works out the equipment, and runs the estimate. It runs on your own Claude login, so there is no API key to manage.</p>
 
 <a class="cta" href="tool.html">Open the live estimator &rarr;</a>
 
 <p class="foot">Prices, footfall and EPC are fixed representative values, not live API feeds yet. In production they connect to wholesale prices, footfall data, and the EPC register. Two sectors are checked against real meters; the rest are benchmark estimates, and the tool marks which is which.</p>
 
-</div></body></html>
+</div></body></html>"""
+
+
+def main():
+    import os
+    os.makedirs("site", exist_ok=True)
+    html = HTML
+    for k, v in numbers().items():
+        html = html.replace(f"%{k}%", v)
+    with open("site/index.html", "w") as f:
+        f.write(html)
+    n = numbers()
+    print("OVERVIEW BUILT -> site/index.html")
+    print(f"  injected: QSR size ±{n['QSR_SIZE']}%, Bakery ±{n['BAKERY_SIZE']}%; "
+          f"corr {n['QSR_CORR']}/{n['BAKERY_CORR']}; bakery-vs-PC3 {n['BAKERY_PC3']}; "
+          f"{n['N_SECTORS']} sectors")
+
+
+if __name__ == "__main__":
+    main()
