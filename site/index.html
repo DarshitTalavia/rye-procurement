@@ -50,6 +50,9 @@
 <p>We rebuild that bill under three products: a flat rate, a day/night rate, and a time-of-use rate that changes every half-hour. Which is cheapest depends on when the site uses power, not on the headline unit rate. A bakery that works at night is cheap on a night rate. A restaurant that peaks at dinner is not.</p>
 <p>Then we weigh risk. A spiky load on a time-varying tariff is exposed: its peaks fall when prices are high. So when the cheapest product wins only by a thin margin and the load is spiky, we recommend the flat rate instead, and say why. The reason is always the shape, never the rate.</p>
 
+<h2>Deterministic, with an agent on top</h2>
+<p>The numbers come from code, not the model. The engine builds the load curve and prices it the same way every time, so the figures are checkable and don't drift. The agent only reads the inputs, your words or a menu photo, and explains the result. It never does the maths. The model can misread a menu, but it can't invent a kWh or a price.</p>
+
 <h2>How we know it works</h2>
 <p>We built the QSR and bakery estimates from public data alone, without looking at their meters. Then we compared.</p>
 <p>Size came within <b>4.1%</b> and <b>5.8%</b>. The shapes matched the real curves (<b>0.79</b> and <b>0.82</b> correlation). And the tool picked the same tariff the real meter would have, both times.</p>
