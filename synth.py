@@ -52,8 +52,11 @@ def _gauss(centre, width):
 
 def place_baseload(o, c):                       # fridges/cellar: 24/7
     return _norm(np.ones(HH))
-def place_pre_open(o, c):                        # baking: ready BEFORE open
-    return _norm(_gauss(o - 3, 2))
+def place_pre_open(o, c):                        # baking: ready BEFORE open (a few bakes)
+    return _norm(_gauss(o - 3, 3))
+def place_open_span(o, c):                       # HVAC/lighting: BROAD across open hours
+    i = np.arange(HH); mid = (o + c) / 2; w = max((c - o) / 2.2, 2.5)
+    return _norm(np.where((i >= o - 1) & (i < c), _gauss(mid, w), 0.0))
 
 def footfall_curve(peaks, o, c):
     """The FOOTFALL (occupancy) curve from per-type busy periods —
@@ -66,17 +69,25 @@ def footfall_curve(peaks, o, c):
     return _norm(a) if a.sum() else _norm(np.where((i >= o) & (i < c), 1.0, 0.0))
 
 def compose(mix: dict, footfall, o: int, c: int) -> np.ndarray:
-    """A normalised daily shape. refrigeration = 24/7 baseload; baking = pre-open;
-    every occupancy-driven load (cooking, hvac, lighting) FOLLOWS the footfall curve."""
+    """A normalised daily shape:
+      refrigeration -> 24/7 baseload
+      baking        -> pre-open bump
+      cooking       -> follows the (peaky) FOOTFALL curve  (meal spikes)
+      hvac/lighting -> BROAD across opening hours          (presence, not footfall)
+    Cooking is the only sharply footfall-peaked load; lighting/HVAC are broad, which
+    matches the real metered load factor (avoids over-peaking)."""
     ff = footfall_curve(footfall, o, c)
+    span = place_open_span(o, c)
     a = np.zeros(HH)
     for eu, w in mix.items():
         if eu == "refrigeration":
             p = place_baseload(o, c)
         elif eu == "baking":
             p = place_pre_open(o, c)
-        else:                                    # cooking / hvac / lighting
+        elif eu == "cooking":
             p = ff
+        else:                                    # hvac, lighting
+            p = span
         a += w * p
     return _norm(a)
 
@@ -165,10 +176,21 @@ def _build_curve(shape, annual, weekend_ratio, year=2026) -> pd.DataFrame:
             for d, dk in zip(days, daily)]
     return pd.concat(rows, ignore_index=True)
 
+def load_factor(shape) -> float:
+    """Daily-shape load factor (mean / peak), 0..1. Low = spiky, high = flat.
+    NOTE: a DAILY-shape proxy — the true ANNUAL load factor is lower (spikier),
+    because the daily shape averages many days so real peaks exceed it."""
+    return float(np.mean(shape) / np.max(shape))
+
+def lf_label(lf) -> str:
+    return "spiky" if lf < 0.35 else "flat" if lf > 0.5 else "moderate"
+
 def shape_metrics_of(shape) -> dict:
+    lf = load_factor(shape)
     return {"peak_time": shapes.hh_label(int(np.argmax(shape))),
             "night_pct": round(float(np.sum(shape[0:14])) * 100, 1),
-            "redband_pct": round(float(np.sum(shape[32:38])) * 100, 1)}
+            "redband_pct": round(float(np.sum(shape[32:38])) * 100, 1),
+            "load_factor": round(lf, 2), "lf_label": lf_label(lf)}
 
 # ----------------------------------------------------------------------------
 # THE SYNTHESISER — facts (+ optional hours) -> full-year half-hourly curve

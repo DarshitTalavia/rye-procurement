@@ -70,13 +70,51 @@ def decision_validation(sector, path, tol_pct=3.0):
 
 
 # ---- GUARDRAILS ------------------------------------------------------------
-def recommend(curve, tol_pct=3.0):
+FIXED = "Fixed flat rate"
+
+def recommend(curve, shape, tol_pct=3.0, risk_tol_pct=4.0):
+    """COST x RISK recommendation. Cost picks the cheapest; load factor (peakiness)
+    breaks thin ties on a defensible RISK basis. The justification always cites the
+    shape metrics (load factor, red-band, night) — never the headline rate.
+
+      - spiky (LF<0.35) AND Fixed is within risk_tol of the cost-winner -> Fixed
+        (cap peak-price exposure for a margin we don't trust),
+      - flat (LF>0.5) AND a time-varying product wins on cost -> keep it (low risk),
+      - otherwise the cost-winner; 'too close to call' only when LF is moderate
+        AND the cost margin is within tol (neither cost nor risk gives a signal)."""
     rank = pricing.compare_products(curve)
     best, second = rank.iloc[0], rank.iloc[1]
-    margin = 100 * (second["total_gbp"] - best["total_gbp"]) / best["total_gbp"]
-    return {"winner": best["label"], "runner_up": second["label"], "margin_pct": margin,
-            "verdict": "clear" if margin >= tol_pct else "too close to call",
-            "saving_gbp": rank.iloc[-1]["total_gbp"] - best["total_gbp"]}
+    cost_margin = 100 * (second["total_gbp"] - best["total_gbp"]) / best["total_gbp"]
+    saving = rank.iloc[-1]["total_gbp"] - best["total_gbp"]
+    m = synth.shape_metrics_of(shape)
+    lf, night, red = m["load_factor"], m["night_pct"], m["redband_pct"]
+    fixed = rank[rank["label"] == FIXED].iloc[0]
+    fixed_premium = 100 * (fixed["total_gbp"] - best["total_gbp"]) / best["total_gbp"]
+
+    cost_winner = best["label"]
+    winner = cost_winner
+    verdict = "clear" if cost_margin >= tol_pct else "too close to call"
+
+    if lf < 0.35 and cost_winner != FIXED and fixed_premium <= risk_tol_pct:
+        winner, verdict = FIXED, "risk-adjusted"
+        why = (f"Spiky load (load factor {lf}, red-band {red}%): Fixed caps peak-price "
+               f"exposure for only a {fixed_premium:.1f}% premium over the cost-cheapest "
+               f"— too thin a margin to trust at this confidence.")
+    elif lf > 0.5 and cost_winner != FIXED:
+        verdict = "clear"
+        why = (f"Flat, predictable load (load factor {lf}, night {night}%, red-band {red}%): "
+               f"low volatility risk, so the time-varying product's saving is worth taking.")
+    else:
+        if 0.35 <= lf <= 0.5 and cost_margin < tol_pct:
+            verdict = "too close to call"
+        tail = ("margin within noise — confirm with metered data."
+                if verdict == "too close to call" else f"clear {cost_margin:.1f}% ahead on cost.")
+        why = f"Cheapest on cost (load factor {lf}, night {night}%, red-band {red}%); {tail}"
+
+    return {"winner": winner, "cost_winner": cost_winner, "runner_up": second["label"],
+            "margin_pct": cost_margin, "fixed_premium_pct": fixed_premium,
+            "verdict": verdict, "rationale": why, "saving_gbp": saving,
+            "load_factor": lf, "night_pct": night, "redband_pct": red}
 
 def plausibility(intensity, annual_kwh, load_factor):
     w = []
@@ -102,11 +140,13 @@ def run_all():
     print(f"\n  Material decision accuracy: {2 - material}/2 "
           f"({outs.count('correct')} exact, {outs.count('immaterial')} immaterial, {material} material miss)")
 
-    print("\n" + "=" * 70 + "\n  GUARDRAILS\n" + "=" * 70)
-    for sec in ["qsr", "bakery", "restaurant", "convenience"]:
-        rec = recommend(synth.synthesize_year(sec)["curve"])
-        print(f"    {synth.SECTORS[sec]['label']:<26} {rec['winner']:<20} "
-              f"{rec['margin_pct']:>4.1f}%  {rec['verdict']}  (saves £{rec['saving_gbp']:,.0f})")
+    print("\n" + "=" * 70 + "\n  GUARDRAILS — cost x risk recommendation\n" + "=" * 70)
+    for sec in ["qsr", "bakery", "restaurant", "pub", "convenience"]:
+        r = synth.synthesize_year(sec)
+        rec = recommend(r["curve"], r["shape_weekday"])
+        flag = f" (cost-winner: {rec['cost_winner']})" if rec["winner"] != rec["cost_winner"] else ""
+        print(f"    {synth.SECTORS[sec]['label']:<26} LF {rec['load_factor']:.2f} -> "
+              f"{rec['winner']:<20} [{rec['verdict']}]{flag}")
     print("  plausibility: 150 m² QSR ->",
           plausibility(391, 58650, 0.49) or "clean ✅",
           "| bad ->", plausibility(391, 58650, 0.97))

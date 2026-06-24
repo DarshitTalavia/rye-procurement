@@ -31,16 +31,18 @@ import synth, pricing, governance
 # ---------------------------------------------------------------------------
 def _analysis(curve, shape, label, confidence, annual, size_source):
     rank = pricing.compare_products(curve)
-    rec = governance.recommend(curve)
+    rec = governance.recommend(curve, shape)
     m = synth.shape_metrics_of(shape)
     products = [{"product": r["label"], "gbp_per_yr": round(r["total_gbp"]),
                  "p_per_kwh": round(r["blended_p_kwh"], 2)} for _, r in rank.iterrows()]
     return {"label": label, "confidence": confidence, "annual_kwh": round(annual),
             "size_source": size_source, "peak_time": m["peak_time"],
+            "load_factor": m["load_factor"], "lf_label": m["lf_label"],
             "night_share_pct": m["night_pct"], "redband_share_pct": m["redband_pct"],
             "products": products, "recommended": rec["winner"],
-            "runner_up": rec["runner_up"], "margin_pct": round(rec["margin_pct"], 1),
-            "verdict": rec["verdict"], "saving_vs_worst_gbp": round(rec["saving_gbp"])}
+            "cost_winner": rec["cost_winner"], "runner_up": rec["runner_up"],
+            "margin_pct": round(rec["margin_pct"], 1), "verdict": rec["verdict"],
+            "rationale": rec["rationale"], "saving_vs_worst_gbp": round(rec["saving_gbp"])}
 
 
 # ---------------------------------------------------------------------------
@@ -107,12 +109,13 @@ HARD RULES:
 
 Then write a SHORT operations brief:
   1. Estimate — annual kWh + the size basis.
-  2. Load shape — peak time, night share, red-band share, in plain English.
-  3. Recommendation — the product, the £/yr saving vs the worst option, and WHY
-     the shape drives it (high night share -> night/ToU wins; high red-band ->
-     time-of-use punished by network charges).
-  4. Confidence & caveats — validated vs prior; too-close-to-call; that opening
-     hours/footfall are owner-provided and refine the shape.
+  2. Load shape — peak time, load factor (spiky/flat), night share, red-band share.
+  3. Recommendation — the product + the tool's cost-vs-risk rationale (cite load
+     factor / red-band / night). If the verdict is "risk-adjusted" (Fixed chosen
+     over a marginally-cheaper time-varying product), explain the risk trade-off;
+     if the cost-winner differs from the recommendation, say so. Note the £/yr saving.
+  4. Confidence & caveats — validated vs prior; too-close-to-call; that load
+     factor is a daily-shape proxy and hours/footfall are owner-provided.
 
 Be concise and practical, like a brief for a busy ops team."""
 

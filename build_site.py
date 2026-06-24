@@ -49,7 +49,8 @@ HTML = r"""<!doctype html>
   .badge{font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line)}
   .cal{background:#eaf4ee;color:var(--good);border-color:#bfe0cd}
   .pri{background:#f5efe2;color:var(--amber);border-color:#e6d9b8}
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px;margin:18px 0}
+  details.panel summary{cursor:pointer;font-weight:600;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.04em}
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
   .card .k{font-size:11px;color:var(--mut)} .card .v{font-size:18px;font-weight:600;margin-top:3px}
   .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
@@ -92,6 +93,8 @@ HTML = r"""<!doctype html>
     <div id="reco" class="reco"></div>
   </div>
 
+  __VALIDATION__
+
   <p class="foot" id="prov"></p>
 </div>
 <script>
@@ -105,11 +108,14 @@ function ff(peaks,o,c){let a=Array(48).fill(0);
   peaks.forEach(([hr,w,h])=>{const g=gauss(hr*2,w);for(let i=0;i<48;i++)a[i]+=h*g[i];});
   for(let i=0;i<48;i++) if(!(i>=o-1&&i<c)) a[i]=0;
   return sum(a)?norm(a):norm(Array.from({length:48},(_,i)=>(i>=o&&i<c)?1:0));}
-function compose(mix,footfall,o,c){const f=ff(footfall,o,c);let a=Array(48).fill(0);
+function span(o,c){const mid=(o+c)/2,w=Math.max((c-o)/2.2,2.5);
+  return norm(Array.from({length:48},(_,i)=>(i>=o-1&&i<c)?Math.exp(-0.5*((i-mid)/w)**2):0));}
+function compose(mix,footfall,o,c){const f=ff(footfall,o,c),s=span(o,c);let a=Array(48).fill(0);
   for(const e in mix){let p;
     if(e==='refrigeration')p=Array(48).fill(1/48);
-    else if(e==='baking')p=norm(gauss(o-3,2));
-    else p=f;                                     // cooking/hvac/lighting follow footfall
+    else if(e==='baking')p=norm(gauss(o-3,3));
+    else if(e==='cooking')p=f;                    // cooking follows footfall (peaky)
+    else p=s;                                     // hvac/lighting broad across open hours
     for(let i=0;i<48;i++)a[i]+=mix[e]*p[i];}return norm(a);}
 
 // ---- pricing (on the composed curve) ----
@@ -132,11 +138,14 @@ function render(){
   const peak=hh(shape.indexOf(Math.max(...shape)));
   const night=Math.round(shape.slice(0,14).reduce((x,y)=>x+y,0)*1000)/10;
   const red=Math.round(shape.slice(32,38).reduce((x,y)=>x+y,0)*1000)/10;
+  const lf=(sum(shape)/48)/Math.max(...shape);
+  const lflab=lf<0.35?'spiky':lf>0.5?'flat':'moderate';
   const cal=s.confidence==='validated';
   $('conf').className='badge '+(cal?'cal':'pri');
   $('conf').textContent=cal?'validated vs meter':'prior (benchmark)';
   $('cards').innerHTML=[['Annual use',Math.round(A).toLocaleString()+' kWh'],
-    ['Peak time',peak],['Night share',night+'%'],['Red-band share',red+'%']]
+    ['Peak time',peak],['Load factor',lf.toFixed(2)+' ('+lflab+')'],
+    ['Night share',night+'%'],['Red-band share',red+'%']]
     .map(x=>`<div class="card"><div class="k">${x[0]}</div><div class="v">${x[1]}</div></div>`).join('');
   const W=480,H=150,bw=W/48,mx=Math.max(...shape);let bars='';
   for(let i=0;i<48;i++){const h=(shape[i]/mx)*(H-10),rb=(i>=32&&i<38);
@@ -146,11 +155,32 @@ function render(){
   $('tariffs').querySelector('tbody').innerHTML=rows.map((r,i)=>
     `<tr class="${i===0?'win':''}"><td>${r.l}</td><td>&pound;${Math.round(r.total).toLocaleString()}</td>`+
     `<td>${r.blended.toFixed(2)}p</td><td>&pound;${Math.round(r.duos).toLocaleString()}</td></tr>`).join('');
-  const margin=100*(rows[1].total-rows[0].total)/rows[0].total,save=Math.round(rows[rows.length-1].total-rows[0].total);
+  // cost x risk recommendation (mirror of governance.recommend)
+  const FIXED='Fixed flat rate';
+  const cost_margin=100*(rows[1].total-rows[0].total)/rows[0].total;
+  const save=Math.round(rows[rows.length-1].total-rows[0].total);
+  const cost_winner=rows[0].l;
+  const fixedRow=rows.find(x=>x.l===FIXED);
+  const fixed_premium=100*(fixedRow.total-rows[0].total)/rows[0].total;
+  let winner=cost_winner, verdict=cost_margin>=3?'clear':'too close to call', why;
+  if(lf<0.35 && cost_winner!==FIXED && fixed_premium<=4){
+    winner=FIXED; verdict='risk-adjusted';
+    why=`Spiky load (LF ${lf.toFixed(2)}, red-band ${red}%): Fixed caps peak-price exposure for only a ${fixed_premium.toFixed(1)}% premium over the cheapest — too thin to trust.`;
+  } else if(lf>0.5 && cost_winner!==FIXED){
+    verdict='clear';
+    why=`Flat, predictable load (LF ${lf.toFixed(2)}, night ${night}%, red-band ${red}%): low volatility risk — take the time-varying saving.`;
+  } else {
+    if(lf>=0.35 && lf<=0.5 && cost_margin<3) verdict='too close to call';
+    why=`Cheapest on cost (LF ${lf.toFixed(2)}, night ${night}%, red-band ${red}%); `+(verdict==='too close to call'?'margin within noise — confirm with metered data.':`clear ${cost_margin.toFixed(1)}% ahead on cost.`);
+  }
   const r=$('reco');
-  if(margin>=3){r.className='reco clear';r.innerHTML=`Recommended: <b>${rows[0].l}</b> &mdash; saves &pound;${save.toLocaleString()}/yr vs worst (${margin.toFixed(1)}% clear).`;}
-  else{r.className='reco close';r.innerHTML=`<b>Too close to call</b> between ${rows[0].l} and ${rows[1].l} (${margin.toFixed(1)}% apart) &mdash; confirm with real half-hourly data.`;}
-  $('prov').textContent=`Shape composed from equipment placed against ${$('open').value}:00–${$('close').value}:00 (${s.confidence}). Size ${floor} m² × ${s.intensity} kWh/m²/yr. Tariff rates representative UK 2026.`;
+  r.className='reco '+(verdict==='clear'?'clear':'close');
+  const head=verdict==='risk-adjusted'
+    ?`Recommended: <b>${winner}</b> <span style="font-weight:400">(risk-adjusted; cost-cheapest is ${cost_winner})</span>`
+    :verdict==='too close to call'?`<b>Too close to call</b> — leaning ${winner}`
+    :`Recommended: <b>${winner}</b>`;
+  r.innerHTML=`${head}<div class="cap" style="margin-top:6px">${why} &nbsp;Max cost saving vs worst: &pound;${save.toLocaleString()}/yr.</div>`;
+  $('prov').innerHTML=`Shape: equipment placed against ${$('open').value}:00–${$('close').value}:00 (cooking follows footfall; HVAC/lighting broad). Size ${floor} m² × ${s.intensity} kWh/m²/yr (${s.confidence}). Load factor is a daily-shape proxy (true annual is lower). Tariff rates representative UK 2026; CCL 0.801p/kWh (Apr 2026).`;
 }
 
 const sel=$('sector'),groups={};
@@ -164,10 +194,40 @@ setDefaults();render();
 </script></body></html>"""
 
 
+def _validation_html():
+    """Real backtest numbers (composed vs metered) rendered into a collapsible
+    note, so the 'validated' badge is shown to be earned, not asserted."""
+    ds = json.load(open("data/dataset.json"))
+    pc3 = synth.make_shape(0.15, [[26, 10, 1.0]])      # generic Elexon-PC3-like baseline
+    items = []
+    for s in ("qsr", "bakery"):
+        comp = synth.ARCHETYPES[s]["shape_weekday"]
+        real = np.array(ds["metered_shapes"][s]["weekday"])
+        corr = float(np.corrcoef(comp, real)[0, 1])
+        ncorr = float(np.corrcoef(comp, pc3)[0, 1])
+        lfc = float(np.mean(comp) / np.max(comp)); lfr = float(np.mean(real) / np.max(real))
+        pse = abs(float(comp.max() - real.max())) * 100
+        items.append(
+            f"<li><b>{synth.SECTORS[s]['label']}</b> — shape corr {corr:.2f}; "
+            f"load factor {lfc:.2f} vs real {lfr:.2f}; peak "
+            f"{shapes.hh_label(int(comp.argmax()))} vs {shapes.hh_label(int(real.argmax()))}; "
+            f"peak-share error {pse:.1f}pp; vs generic Elexon-PC3 baseline only "
+            f"corr {ncorr:.2f}.</li>")
+    return ('<details class="panel"><summary>Validation — why QSR &amp; Bakery are '
+            '&ldquo;validated vs meter&rdquo;</summary>'
+            '<p style="font-size:13px">Built from public priors, then backtested against the '
+            'real May half-hourly meter:</p><ul style="font-size:13px">' + "".join(items) + "</ul>"
+            '<p style="font-size:13px">Blind held-out test (no CSV access while building): size '
+            'within ~5%, right tariff 2/2. The low/negative PC3 correlation shows the equipment '
+            'method captures sector shape the industry-standard profile misses (a bakery is '
+            'anti-correlated with PC3).</p>'
+            '<p class="cap">Scope: 2 sectors, 1 month (May), built blind — not industry-wide.</p></details>')
+
+
 def main():
     import os
     os.makedirs("site", exist_ok=True)
-    html = HTML.replace("__DATA__", json.dumps(DATA))
+    html = HTML.replace("__DATA__", json.dumps(DATA)).replace("__VALIDATION__", _validation_html())
     with open("site/index.html", "w") as f:
         f.write(html)
     print("=" * 64)

@@ -19,7 +19,7 @@ rate structure differs):
   DUoS       network charge, time-banded red/amber/green -- this is WHY a
              4-7pm peak is expensive to serve (applied to every product, so
              it explains site cost-to-serve rather than flipping the winner)
-  CCL        Climate Change Levy 0.775 p/kWh
+  CCL        Climate Change Levy 0.801 p/kWh (electricity, from 1 Apr 2026)
   VAT        20%
 
 All p/kWh figures are REPRESENTATIVE UK non-domestic 2026 values: the
@@ -33,7 +33,8 @@ import pandas as pd
 import synth
 
 # ---- fixed adders -----------------------------------------------------------
-CCL_P_KWH = 0.775
+CCL_P_KWH = 0.801   # UK Climate Change Levy, electricity main rate from 1 Apr 2026
+                    # (gov.uk; RPI uplift from 0.775; rises to 0.827 in Apr 2027)
 VAT = 0.20
 STANDING_P_DAY = 95.0
 
