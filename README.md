@@ -32,20 +32,29 @@ Netlify for a link.
 
 ### The agent (your Claude login)
 
+Run it on your own Claude account. No API key.
+
 ```bash
-# once
+# 1. get the code
+git clone https://github.com/DarshitTalavia/rye-procurement.git
+cd rye-procurement
+
+# 2. set up Claude Code (once) — sign in with your Claude account, Pro or Max
 npm install -g @anthropic-ai/claude-code
-claude                       # sign in with your Claude account (Pro or Max)
+claude
+
+# 3. install Python packages (once)
 pip install -r requirements.txt
 
-# run
+# 4. run it — describe the business, or point it at a menu photo
 python agent.py "Pub, 200 m2, open 12pm to 11pm"
-python agent.py --image data/image.png "120 m2, open 11am to 9pm"   # reads a menu photo
+python agent.py --image data/image.png "120 m2, open 11am to 9pm"
 ```
 
-Describe the business in plain words, or give it a photo of the menu. It reads the
-menu, works out the equipment, and writes the brief. It uses your Claude login, so
-there is no API key to manage.
+It maps the business to a type, or reads the menu (typed or from the photo), works
+out the equipment, and writes the brief: annual use, load shape, and the tariff to
+buy. The brief prints to the screen and saves to `agent_brief.md`. It runs on your
+Claude login, so there is no API key to set up.
 
 ## How it works
 
