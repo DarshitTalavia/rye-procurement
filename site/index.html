@@ -16,7 +16,9 @@
   .cta{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;
        padding:11px 18px;border-radius:9px;font-weight:600;margin:8px 0 4px}
   .foot{color:var(--mut);font-size:13px;border-top:1px solid var(--line);margin-top:30px;padding-top:14px}
-  b{color:var(--ink)}
+  b{color:var(--ink)} a{color:var(--accent)}
+  pre{background:#f1ede4;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+      overflow-x:auto;font-size:13px;line-height:1.6;font-family:ui-monospace,Menlo,Consolas,monospace}
 </style></head>
 <body><div class="wrap">
 
@@ -57,6 +59,15 @@
 <p>Two things.</p>
 <p>A <b>live tool</b>. Pick a business, set the hours and size, and it shows the consumption, the shape, and the tariff. Change the hours and the answer moves. It covers 7 business types across hospitality and retail.</p>
 <p>An <b>agent</b>. Describe the business in plain words, or upload a photo of the menu, and it returns the same brief. It reads the menu, works out the equipment, and runs the estimate. It runs on your own Claude login, so there is no API key to manage.</p>
+<p>To run the agent on your own Claude account:</p>
+<pre>git clone https://github.com/DarshitTalavia/rye-procurement.git
+cd rye-procurement
+npm install -g @anthropic-ai/claude-code
+claude            # sign in with your Claude account (Pro or Max)
+pip install -r requirements.txt
+python agent.py "Pub, 200 m2, open 12pm to 11pm"
+python agent.py --image data/image.png "120 m2, open 11am to 9pm"</pre>
+<p>The code and full instructions are in the <a href="https://github.com/DarshitTalavia/rye-procurement">repo</a>.</p>
 
 <a class="cta" href="tool.html">Open the live estimator &rarr;</a>
 
